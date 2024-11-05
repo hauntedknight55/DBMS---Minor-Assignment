@@ -1,78 +1,88 @@
 -- A2: Demonstrate indexing and associated operations.
--- Indexing with only SQL commands:
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-/*Create a table*/
-Create table employee
-(
-	empno integer not null
-	constraint EMPLOYEE_PK_VIOLATION
-	primary key,
-	empname char(20) not null,
-	sex char(1) not null
-	Constraint EMPLOYEE_SEX_VIOLATION
-	check (sex in ('m','f')),
-	phone integer null,
-	dob date default '01-jan-1901' not null
-);
+#define MAX_RECORDS 100
+#define NAME_LENGTH 50
+#define FILENAME "students.csv"
 
-/*Insert data into table*/
-Insert into employee  values(&eno,&ename,&sex,&phone,&dob);	
+typedef struct {
+    int id;
+    char name[NAME_LENGTH];
+} Student;
 
-/*Create a Index on sex*/
-Create INDEX empsex_index on employee(sex);
+typedef struct {
+    int id;
+    long position; // Position in the data file
+} IndexEntry;
 
-/*Query the data*/
-Select * From employee where sex= ‘m’;
+void writeRecords(FILE *dataFile) {
+    fprintf(dataFile, "ID,Name\n"); // Header row
+    Student students[MAX_RECORDS] = {
+        {1, "Aman"},
+        {2, "Shrikar"},
+        {3, "Ravi"},
+        {4, "Harish"},
+        {5, "Ramesh"}
+    };
 
-/*View the query execution plan*/
-EXPLAIN PLAN FOR
-SELECT * FROM employees WHERE sex = ‘m’;
-SELECT * FROM table(DBMS_XPLAN.DISPLAY);
+    for (int i = 0; i < 5; i++) {
+        fprintf(dataFile, "%d,%s\n", students[i].id, students[i].name);
+    }
+}
 
--- Output:
-SQL> Create INDEX empsex_index on employee(sex);
--- Index created.
-SQL> select * from employee where sex='m';
---      EMPNO EMPNAME              S      PHONE 	DOB
--- ---------- -------------------- - ---------- -------------  --------------
---          1 abdulbasith          	m 	9035789789 	05-MAY-03
---          2 bhanu                	m       	4165 		19-MAY-03
---          3 abhishek             	m        	897 		12-DEC-04
---          4 joy                  		m        	732 		18-AUG-05
---          5 pratham              	m         46 		17-JUN-12
---          6 lalit                		m       	7896 		14-SEP-05
---          7 akhil                		m        	135 		14-AUG-02
---          8 sagar                	m       	5285 		03-DEC-07
---          9 chinmay              	m      	45625 		23-NOV-12
 
--- SQL> Explain plan for
---   2  select * from employee where sex='m';
--- Explained.
--- SQL> SELECT * FROM table(DBMS_XPLAN.DISPLAY);
+void createIndex(FILE *dataFile, IndexEntry *index, int *indexSize) {
+    fseek(dataFile, 0, SEEK_SET);
+    char line[NAME_LENGTH + 10]; // Buffer for reading lines
+    *indexSize = 0;
 
--- PLAN_TABLE_OUTPUT
--- --------------------------------------------------------------------------------
--- Plan hash value: 4021620938
--- --------------------------------------------------------------------------------
--- | Id  | Operation                   | Name         | Rows  | Bytes | Cost (%CPU)   | Time     |
--- --------------------------------------------------------------------------------
--- PLAN_TABLE_OUTPUT
--- --------------------------------------------------------------------------------
--- |   0 | SELECT STATEMENT            |              |     6 |   228 |     2   (0)
--- | 00:00:01 |
+    while (fgets(line, sizeof(line), dataFile)) {
+        // Get the position of the current line
+        index[*indexSize].position = ftell(dataFile) - strlen(line);
+        
+        // Parse the ID from the line
+        sscanf(line, "%d,", &index[*indexSize].id);
+        (*indexSize)++;
+    }
+}
 
--- |   1 |  TABLE ACCESS BY INDEX ROWID| EMPLOYEE     |     6 |   228 |     2   (0)
--- | 00:00:01 |
+void searchRecord(FILE *dataFile, IndexEntry *index, int indexSize, int searchId) {
+    for (int i = 0; i < indexSize; i++) {
+        if (index[i].id == searchId) {
+            char line[NAME_LENGTH + 10];
+            fseek(dataFile, index[i].position, SEEK_SET);
+            fgets(line, sizeof(line), dataFile);
+            printf("Record Found: %s", line);
+            return;
+        }
+    }
+    printf("Record with ID %d not found.\n", searchId);
+}
 
--- |*  2 |   INDEX RANGE SCAN          | EMPSEX_INDEX |     6 |       |     1   (0)
--- | 00:00:01 |
--- --------------------------------------------------------------------------------
--- ------------
--- PLAN_TABLE_OUTPUT
--- --------------------------------------------------------------------------------
--- Predicate Information (identified by operation id):
--- ---------------------------------------------------
---    2 - access("SEX"='m')
+int main() {
+    FILE *dataFile = fopen(FILENAME, "w+");
+    if (dataFile == NULL) {
+        perror("Unable to open file");
+        return 1;
+    }
 
--- 14 rows selected.
+    // Step 1: Write records to the data file
+    writeRecords(dataFile);
 
+    // Step 2: Create an index for the records
+    IndexEntry index[MAX_RECORDS];
+    int indexSize;
+    createIndex(dataFile, index, &indexSize);
+
+    // Step 3: Search for records using the index
+    int searchId;
+    printf("Enter ID to search for: ");
+    scanf("%d", &searchId);
+    searchRecord(dataFile, index, indexSize, searchId);
+
+    // Clean up
+    fclose(dataFile);
+    return 0;
+}
